@@ -15,6 +15,7 @@ Sockets Layer.
 | Email Address Obfuscation | **Security, Settings**, group **Client side abuse** | Off | On |
 | Bot fight mode | **Security, Settings**, group **Bot traffic** | Off | Off |
 | Rocket Loader | **Speed, Settings**, tab **Content Optimization** | Off | Off |
+| DNSSEC | **DNS, Settings** | On, **only once the transfer completes** | Off |
 
 Why:
 
@@ -33,6 +34,13 @@ Why:
   into the page. A site with a strict Content Security Policy blocks them; obfuscation then
   shows "[email protected]" wherever the page has an email address.
 - **Caching** stays at the default: static files only, never HTML, which carries form tokens.
+- **Domain Name System Security Extensions (DNSSEC)** signs the zone's records. It is the one
+  setting that waits: while the domain is still registered elsewhere, turning it on in
+  Cloudflare does nothing until the registry has a matching record. Once Cloudflare is the
+  registrar it publishes that record itself
+  ([After the transfer: DNSSEC on](transfer-registration.md#after-the-transfer-dnssec-on)).
+  For a domain that stays at another registrar, see
+  [Domains that stay at another registrar](transfer-registration.md#domains-that-stay-at-another-registrar).
 
 ---
 

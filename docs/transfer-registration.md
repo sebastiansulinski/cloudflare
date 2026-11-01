@@ -49,6 +49,30 @@ be forged on the way to a visitor.
 **Domain, DNS, Settings, DNSSEC: enable.** With Cloudflare as registrar, it publishes the
 signing record at the registry itself, with nothing to copy.
 
+## Domains that stay at another registrar
+
+DNSSEC still works when only the DNS is on Cloudflare, but the signing record has to be
+copied to the registrar by hand:
+
+1. Cloudflare: **Domain, DNS, Settings, DNSSEC: enable.** It shows the Delegation Signer (DS)
+   record: key tag, algorithm (`13`), digest type (`2`) and digest.
+2. The registrar (Namecheap: **Domain List, Manage, Advanced DNS, DNSSEC**): turn it on and
+   add a record with those four values, exactly as Cloudflare shows them.
+3. Cloudflare marks DNSSEC **Active** once the registry publishes it, usually within a few
+   hours. Check (expects one line with the same key tag and digest):
+
+   ```bash
+   DOMAIN=example.co.uk
+   REGISTRY=$(dig +short NS "${DOMAIN#*.}" | head -1)
+   dig +nocmd DS "$DOMAIN" @"$REGISTRY" +norec +noall +answer
+   ```
+
+Before moving such a domain's DNS anywhere else later, remove the record at the registrar
+first and wait for it to expire, as in
+[Switch off DNSSEC at the old registrar](move-dns.md#switch-off-dnssec-at-the-old-registrar).
+A record left pointing at Cloudflare's keys breaks every lookup once Cloudflare stops
+answering.
+
 ---
 
 Previous: [Move a domain's DNS to Cloudflare](move-dns.md) | Next: [Zone settings for every domain](zone-settings.md)

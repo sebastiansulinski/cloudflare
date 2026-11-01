@@ -35,6 +35,7 @@ nothing has to listen on ports 80 or 443 to the internet, and the server needs n
    - [Domains ending in .uk](docs/transfer-registration.md#domains-ending-in-uk)
    - [.com and other generic domains](docs/transfer-registration.md#com-and-other-generic-domains)
    - [After the transfer: DNSSEC on](docs/transfer-registration.md#after-the-transfer-dnssec-on)
+   - [Domains that stay at another registrar](docs/transfer-registration.md#domains-that-stay-at-another-registrar)
 4. [Zone settings for every domain](docs/zone-settings.md)
 5. [The tunnel (once per server)](docs/tunnel.md)
 6. [Serve a site through the tunnel](docs/serve-site-through-tunnel.md)
