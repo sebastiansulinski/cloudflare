@@ -567,6 +567,19 @@ Delete every imported record, then add exactly these:
   real `MX`, Sender Policy Framework, DomainKeys Identified Mail and Domain-based Message
   Authentication, Reporting and Conformance (DMARC) records instead.
 
+**Zone settings.** Cloudflare still answers every request itself, encryption included, so
+set these as for any zone ([section 4](#4-zone-settings-for-every-domain)):
+
+| Setting | Where | Value |
+|---|---|---|
+| Always Use HTTPS | **SSL/TLS, Edge Certificates** | On |
+| Minimum TLS Version | same page | TLS 1.2 |
+| HTTP Strict Transport Security (HSTS) | same page | Not enabled |
+
+The settings that inject scripts (Email Address Obfuscation, Bot fight mode, Rocket Loader)
+make no difference here: the domain serves no pages. The encryption mode doesn't matter
+either, since nothing is passed on to a server.
+
 ### 9.2 The redirect rule
 
 **Rules, Redirect Rules, Create rule:**
