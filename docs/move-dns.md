@@ -20,7 +20,9 @@ for h in www _dmarc google._domainkey; do echo "== $h"; dig +short "$h.$DOMAIN";
 ```
 
 Look out for records with random-looking names, such as the three Amazon Simple Email Service
-signing records ending in `._domainkey`: no lookup can list them.
+signing records ending in `._domainkey`: no lookup can list them. Their names are in the
+Amazon Simple Email Service console (**Identities**, the domain, **DomainKeys Identified Mail
+(DKIM), Publish DNS records**).
 
 ## Switch off DNSSEC at the old registrar
 
@@ -56,7 +58,34 @@ settings can all be set up while it is pending.
 
 ## Check the imported records
 
-**Domain, DNS, Records.** Compare with the list from [Record the current records](#record-the-current-records):
+**Domain, DNS, Records.** Compare with the list from [Record the current records](#record-the-current-records).
+The import guesses names, so it **silently misses** anything under a name it doesn't know:
+on `mailtransporter.co.uk` it dropped all three Amazon Simple Email Service signing records,
+`_mta-sts.mail` and `_smtp._tls.mail`, while finding `_dmarc.mail` beside them. Outgoing mail
+lost its signatures the moment the nameservers changed.
+
+Ask the old and new nameservers for the same names side by side (any line printed is a
+record that differs). The old provider keeps answering for days after the switch, so this
+works afterwards too:
+
+```bash
+DOMAIN=example.co.uk
+OLD=dns1.registrar-servers.com
+NEW=glen.ns.cloudflare.com
+for n in @ www mail _dmarc _dmarc.mail _mta-sts.mail _smtp._tls.mail google._domainkey; do
+  [ "$n" = @ ] && f=$DOMAIN || f=$n.$DOMAIN
+  for t in A CNAME MX TXT; do
+    a=$(dig +short $t "$f" @$OLD | sort | tr '\n' ' '); b=$(dig +short $t "$f" @$NEW | sort | tr '\n' ' ')
+    [ -n "$a$b" ] && [ "$a" != "$b" ] && printf "%-6s %-40s old: %s\n%-47s new: %s\n" $t "$f" "$a" "" "$b"
+  done
+done
+```
+
+Add the domain's own names to the `for` list, including each `<key>._domainkey` from the Amazon
+Simple Email Service console. `NEW` is either of the zone's two Cloudflare nameservers
+([Add the zone](#add-the-zone)). Nothing printed means the two agree.
+
+Then go through:
 
 - **Email records:** `MX`, the Sender Policy Framework `TXT` on the bare domain, DomainKeys
   Identified Mail (`google._domainkey` or others), `_dmarc`, and verification `TXT` records

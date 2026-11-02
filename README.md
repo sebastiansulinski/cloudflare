@@ -3,7 +3,8 @@
 How domains and sites are moved to and run on Cloudflare: moving a domain's Domain Name
 System (DNS) and its registration, the settings every zone gets, serving a site from a server
 through a Cloudflare Tunnel, configuring nginx (by hand and through a Forge nginx template),
-and domains that only redirect to another domain.
+domains that only redirect to another domain, and a mail domain's Mail Transfer Agent Strict
+Transport Security (MTA-STS) policy served from a Worker.
 
 Every command block is self-contained: set the variables on its first lines, then copy the
 whole block. Dashboard paths are as the Cloudflare and Forge dashboards showed them on
@@ -51,6 +52,11 @@ nothing has to listen on ports 80 or 443 to the internet, and the server needs n
 9. [Domains that only redirect](docs/redirect-only-domains.md)
    - [DNS records](docs/redirect-only-domains.md#dns-records)
    - [The redirect rule](docs/redirect-only-domains.md#the-redirect-rule)
-10. [Checks](docs/checks.md)
-11. [Troubleshooting](docs/troubleshooting.md)
-12. [Sources](docs/sources.md)
+10. [Serve an MTA-STS policy from a Worker](docs/mta-sts-policy.md)
+    - [The records](docs/mta-sts-policy.md#the-records)
+    - [The Worker](docs/mta-sts-policy.md#the-worker)
+    - [The hostname](docs/mta-sts-policy.md#the-hostname)
+    - [Reports without an inbox](docs/mta-sts-policy.md#reports-without-an-inbox)
+11. [Checks](docs/checks.md)
+12. [Troubleshooting](docs/troubleshooting.md)
+13. [Sources](docs/sources.md)

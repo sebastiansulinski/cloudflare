@@ -21,6 +21,9 @@ DNS is the Domain Name System, DNSSEC its Security Extensions, `CNAME` a canonic
 | Google mail fails DomainKeys Identified Mail checks | The key is split across two `TXT` records | [Check the imported records](move-dns.md#check-the-imported-records) |
 | Certificate renewal failure emails after the move | The old certificate is still set to renew | [Certificates and closing the public ports](nginx.md#certificates-and-closing-the-public-ports) |
 | One site's traffic lands on another site | One server block listens on `127.0.0.1:80`, the rest on `80` | [Every site listens the same way](nginx.md#every-site-listens-the-same-way) |
+| Outgoing mail fails DomainKeys Identified Mail checks after the move; Amazon Simple Email Service shows the domain's signing as failed | The import missed the three `._domainkey` `CNAME` records | Add them, **DNS only** ([Check the imported records](move-dns.md#check-the-imported-records)) |
+| Worker **Add Domain** answers "No zones match" for a zone that is active | The full hostname was typed into the search box | Pick the zone first, then enter the subdomain ([The hostname](mta-sts-policy.md#the-hostname)) |
+| `ERR_SSL_UNRECOGNIZED_NAME_ALERT` or `unrecognized name` on your own computer only, after the move | A virtual private network's resolver still caches the old address; flushing macOS's cache doesn't clear it | Disconnect and reconnect the virtual private network, or wait; test through Cloudflare (below) |
 | Zone active but the site and email are gone | The zone has no records (nothing was imported or added) | Re-create them from the old provider's list ([Record the current records](move-dns.md#record-the-current-records)) |
 
 Flush macOS's DNS cache:

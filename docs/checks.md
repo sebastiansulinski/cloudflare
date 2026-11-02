@@ -53,4 +53,4 @@ dig +short TXT "google._domainkey.$DOMAIN"
 
 ---
 
-Previous: [Domains that only redirect](redirect-only-domains.md) | Next: [Troubleshooting](troubleshooting.md)
+Previous: [Serve an MTA-STS policy from a Worker](mta-sts-policy.md) | Next: [Troubleshooting](troubleshooting.md)

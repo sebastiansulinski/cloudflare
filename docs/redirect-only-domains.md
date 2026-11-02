@@ -83,4 +83,4 @@ done
 
 ---
 
-Previous: [Forge nginx template](forge-nginx-template.md) | Next: [Checks](checks.md)
+Previous: [Forge nginx template](forge-nginx-template.md) | Next: [Serve an MTA-STS policy from a Worker](mta-sts-policy.md)
