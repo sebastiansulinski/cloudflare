@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+#
+# Set up a domain that only redirects to another one, as in
+# docs/redirect-only-domains.md, in one go: the five DNS records, the zone's
+# encryption and script settings, and the redirect rule. Then read everything
+# back and test the redirect.
+#
+# Usage:
+#   bin/setup-redirect-domain [--dry-run] [--replace] [--no-check] <domain> <target>
+#
+#   <domain>   the zone that redirects, for example old-domain.com
+#   <target>   where it goes: the final address, www. included if the target
+#              redirects to www. itself, for example example.co.uk
+#   --dry-run  read the zone and print what would change, without changing it
+#   --replace  delete the zone's other DNS records and other redirect rules
+#              instead of stopping when it has any
+#   --no-check skip the final redirect test, for a zone whose nameservers
+#              are not switched yet
+#
+# Needs CLOUDFLARE_API_TOKEN: a token with Zone Read, DNS Edit, Zone Settings
+# Edit and Single Redirect Edit on the zone (docs/redirect-only-domains.md).
+# CLOUDFLARE_API_BASE overrides the API address, for testing.
+
+set -euo pipefail
+
+API="${CLOUDFLARE_API_BASE:-https://api.cloudflare.com/client/v4}"
+DRY_RUN=0
+REPLACE=0
+CHECK=1
+ARGUMENTS=()
+
+for argument in "$@"; do
+    case "$argument" in
+        --dry-run) DRY_RUN=1 ;;
+        --replace) REPLACE=1 ;;
+        --no-check) CHECK=0 ;;
+        -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) echo "Unknown option: $argument" >&2; exit 2 ;;
+        *) ARGUMENTS+=("$argument") ;;
+    esac
+done
+
+if [ "${#ARGUMENTS[@]}" -ne 2 ]; then
+    echo "Usage: bin/setup-redirect-domain [--dry-run] [--replace] [--no-check] <domain> <target>" >&2
+    exit 2
+fi
+
+# Whatever was typed or pasted, reduced to a bare lower-case hostname.
+clean() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' \
+        | sed -E 's#^[a-z]+://##; s#[/?\#].*$##; s#:[0-9]+$##; s#\.$##'
+}
+
+DOMAIN="$(clean "${ARGUMENTS[0]}")"
+DOMAIN="${DOMAIN#www.}"
+TARGET="$(clean "${ARGUMENTS[1]}")"
+HOSTNAME_PATTERN='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'
+
+for name in "$DOMAIN" "$TARGET"; do
+    if ! printf '%s' "$name" | grep -Eq "$HOSTNAME_PATTERN"; then
+        echo "Not a domain name: $name" >&2
+        exit 2
+    fi
+done
+
+if [ "$DOMAIN" = "$TARGET" ] || [ "www.$DOMAIN" = "$TARGET" ]; then
+    echo "The target must be another domain: $DOMAIN would redirect to itself." >&2
+    exit 2
+fi
+
+if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+    echo "Set CLOUDFLARE_API_TOKEN first (docs/redirect-only-domains.md)." >&2
+    exit 2
+fi
+
+for tool in curl jq; do
+    command -v "$tool" >/dev/null || { echo "Needs $tool." >&2; exit 2; }
+done
+
+step() { printf '\n== %s\n' "$1"; }
+say() { printf '   %s\n' "$1"; }
+
+# One API call. Prints the response body; stops the script on a failed call,
+# except a 404, which the caller handles (an empty redirect phase answers 404).
+api() {
+    local method="$1" path="$2" body="${3:-}" response status
+    local arguments=(-sS -X "$method" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+        -H "Content-Type: application/json" -w '\n%{http_code}')
+    [ -n "$body" ] && arguments+=(--data "$body")
+    response="$(curl "${arguments[@]}" "$API$path")"
+    status="${response##*$'\n'}"
+    response="${response%$'\n'*}"
+    if [ "$status" = "404" ]; then
+        printf '%s' "$response"
+        return 0
+    fi
+    if [ "$(printf '%s' "$response" | jq -r '.success // false' 2>/dev/null)" != "true" ]; then
+        echo "Cloudflare refused $method $path (HTTP $status):" >&2
+        printf '%s' "$response" | jq -r '.errors[]? | "  \(.code): \(.message)"' >&2 2>/dev/null \
+            || printf '%s\n' "$response" >&2
+        exit 1
+    fi
+    printf '%s' "$response"
+}
+
+# A change: printed on a dry run, made otherwise.
+change() {
+    if [ "$DRY_RUN" = 1 ]; then
+        say "would $1 $2"
+        return 0
+    fi
+    api "$1" "$2" "${3:-}" >/dev/null
+}
+
+[ "$DRY_RUN" = 1 ] && echo "Dry run: nothing is changed."
+
+step "Zone"
+ZONE="$(api GET "/zones?name=$DOMAIN" | jq -c '.result[0] // empty')"
+if [ -z "$ZONE" ]; then
+    echo "No zone named $DOMAIN in this account (or the token cannot see it)." >&2
+    exit 1
+fi
+ZONE_ID="$(printf '%s' "$ZONE" | jq -r '.id')"
+say "$DOMAIN ($(printf '%s' "$ZONE" | jq -r '.status')), redirecting to https://$TARGET"
+
+step "DNS records"
+# The five records from docs/redirect-only-domains.md. TTL 1 is "Auto".
+DESIRED="$(jq -n --arg d "$DOMAIN" '[
+    {type: "A", name: $d, content: "192.0.2.1", proxied: true, ttl: 1},
+    {type: "A", name: ("www." + $d), content: "192.0.2.1", proxied: true, ttl: 1},
+    {type: "MX", name: $d, content: ".", priority: 0, ttl: 1},
+    {type: "TXT", name: $d, content: "\"v=spf1 -all\"", ttl: 1},
+    {type: "TXT", name: ("_dmarc." + $d), content: "\"v=DMARC1; p=reject;\"", ttl: 1}
+]')"
+EXISTING="$(api GET "/zones/$ZONE_ID/dns_records?per_page=5000" | jq -c '.result')"
+
+# Compare what matters: type, name, content (TXT with or without quotes), proxy, priority.
+key() {
+    jq -c 'map({type, name, content: (.content | ltrimstr("\"") | rtrimstr("\"")),
+        proxied: (.proxied // false), priority: (.priority // null)}) | sort_by(.type, .name, .content)'
+}
+WANTED_KEYS="$(printf '%s' "$DESIRED" | key)"
+EXISTING_KEYS="$(printf '%s' "$EXISTING" | key)"
+
+if [ "$WANTED_KEYS" = "$EXISTING_KEYS" ]; then
+    say "already the five records"
+else
+    OTHERS="$(jq -c -n --argjson have "$EXISTING" --argjson want "$WANTED_KEYS" '
+        $have | map(select(({type, name, content: (.content | ltrimstr("\"") | rtrimstr("\"")),
+            proxied: (.proxied // false), priority: (.priority // null)}) as $k | ($want | index([$k])) == null))')"
+    OTHER_COUNT="$(printf '%s' "$OTHERS" | jq 'length')"
+    if [ "$OTHER_COUNT" -gt 0 ] && [ "$REPLACE" = 0 ]; then
+        echo "   The zone has $OTHER_COUNT other record(s):" >&2
+        printf '%s' "$OTHERS" | jq -r '.[] | "     \(.type)\t\(.name)\t\(.content)"' >&2
+        echo "   Run again with --replace to delete them, or delete them in the dashboard." >&2
+        [ "$DRY_RUN" = 1 ] || exit 1
+    fi
+    # Deletes run before posts, in one atomic request: either all of it applies or none.
+    BATCH="$(jq -c -n --argjson others "$OTHERS" --argjson have "$EXISTING" --argjson desired "$DESIRED" '
+        def k: {type, name, content: (.content | ltrimstr("\"") | rtrimstr("\"")),
+            proxied: (.proxied // false), priority: (.priority // null)};
+        ($have | map(k)) as $haveKeys
+        | {deletes: ($others | map({id})),
+           posts: ($desired | map(select((k as $x | $haveKeys | index([$x])) == null)))}')"
+    printf '%s' "$BATCH" | jq -r '.deletes[] | "delete record \(.id)"' | while read -r line; do say "$line"; done
+    printf '%s' "$BATCH" | jq -r '.posts[] | "add \(.type) \(.name) \(.content)"' | while read -r line; do say "$line"; done
+    change POST "/zones/$ZONE_ID/dns_records/batch" "$BATCH"
+fi
+
+step "Zone settings"
+# Encryption as for every zone; the script-injecting features off (docs/zone-settings.md).
+for setting in ssl:strict always_use_https:on min_tls_version:1.2 email_obfuscation:off rocket_loader:off; do
+    id="${setting%%:*}"
+    value="${setting#*:}"
+    current="$(api GET "/zones/$ZONE_ID/settings/$id" | jq -r '.result.value')"
+    if [ "$current" = "$value" ]; then
+        say "$id is $value"
+    else
+        say "$id: $current -> $value"
+        change PATCH "/zones/$ZONE_ID/settings/$id" "$(jq -c -n --arg v "$value" '{value: $v}')"
+    fi
+done
+
+step "Redirect rule"
+PHASE="/zones/$ZONE_ID/rulesets/phases/http_request_dynamic_redirect/entrypoint"
+DESCRIPTION="Redirect to $TARGET"
+RULE="$(jq -c -n --arg d "$DOMAIN" --arg t "$TARGET" --arg description "$DESCRIPTION" '{
+    description: $description,
+    expression: "(http.host in {\"\($d)\" \"www.\($d)\"})",
+    action: "redirect",
+    action_parameters: {from_value: {
+        status_code: 301,
+        target_url: {expression: "concat(\"https://\($t)\", http.request.uri.path)"},
+        preserve_query_string: true
+    }}
+}')"
+CURRENT_RULES="$(api GET "$PHASE" | jq -c '.result.rules // []')"
+SAME="$(jq -n --argjson rules "$CURRENT_RULES" --argjson rule "$RULE" '
+    ($rules | length) == 1 and ($rules[0] | {description, expression, action, action_parameters}) == $rule')"
+if [ "$SAME" = "true" ]; then
+    say "already: $DESCRIPTION"
+else
+    OTHER_RULES="$(printf '%s' "$CURRENT_RULES" | jq --arg description "$DESCRIPTION" 'map(select(.description != $description)) | length')"
+    if [ "$OTHER_RULES" -gt 0 ] && [ "$REPLACE" = 0 ]; then
+        echo "   The zone has $OTHER_RULES other redirect rule(s):" >&2
+        printf '%s' "$CURRENT_RULES" | jq -r '.[] | "     \(.description // "(no name)"): \(.expression)"' >&2
+        echo "   Run again with --replace to replace them, or remove them in the dashboard." >&2
+        [ "$DRY_RUN" = 1 ] || exit 1
+    fi
+    say "set: $DESCRIPTION"
+    # The phase holds the zone's whole list of redirect rules, so this replaces it.
+    change PUT "$PHASE" "$(jq -c -n --argjson rule "$RULE" '{rules: [$rule]}')"
+fi
+
+if [ "$DRY_RUN" = 1 ]; then
+    printf '\nDry run finished: run again without --dry-run to apply it.\n'
+    exit 0
+fi
+
+if [ "$CHECK" = 0 ]; then
+    printf '\nDone, without the redirect test: %s redirects to https://%s.\n' "$DOMAIN" "$TARGET"
+    exit 0
+fi
+
+step "Check"
+# A new rule can take a few seconds to reach every Cloudflare location.
+failures=0
+for url in "http://$DOMAIN/" "https://$DOMAIN/about?x=1" "http://www.$DOMAIN/" "https://www.$DOMAIN/about?x=1"; do
+    expected="https://$TARGET/${url#*://*/}"
+    result=""
+    for attempt in 1 2 3 4 5 6; do
+        result="$(curl -s -o /dev/null -m 15 -w '%{http_code} %{redirect_url}' "$url" || true)"
+        [ "$result" = "301 $expected" ] && break
+        sleep 5
+    done
+    if [ "$result" = "301 $expected" ]; then
+        say "ok    $url -> $expected"
+    else
+        say "FAIL  $url -> $result (expected 301 $expected)"
+        failures=$((failures + 1))
+    fi
+done
+
+if [ "$failures" -gt 0 ]; then
+    printf '\n%s redirect check(s) failed. If the nameservers changed in the last hour, try again later.\n' "$failures"
+    exit 1
+fi
+printf '\nDone: %s redirects to https://%s.\n' "$DOMAIN" "$TARGET"

@@ -82,6 +82,42 @@ for u in "http://$FROM/" "https://$FROM/about?x=1" "http://www.$FROM/" "https://
 done
 ```
 
+## All of it in one command
+
+`bin/setup-redirect-domain` does this whole page for a zone already on Cloudflare: the five DNS
+records, the zone settings above (plus Full (strict) encryption, Email Address Obfuscation and
+Rocket Loader off), and the redirect rule. Then it tests the four redirects (both hostnames,
+both schemes, a path and a query string). Run it again any time: what is already right is left
+alone.
+
+```bash
+export CLOUDFLARE_API_TOKEN=...   # see below
+bin/setup-redirect-domain --dry-run old-domain.com example.co.uk
+bin/setup-redirect-domain old-domain.com example.co.uk
+```
+
+- `--dry-run` reads the zone and prints every change it would make, changing nothing.
+- It stops if the zone has other DNS records or other redirect rules, and lists them.
+  `--replace` deletes those records (in the same request that adds the five, so either all of
+  it applies or none) and replaces the rules.
+- `--no-check` skips the final test, for a zone whose nameservers have not switched yet.
+
+**The token.** Cloudflare, **My Profile, API Tokens, Create Token, Create Custom Token**, with
+these zone permissions (the labels in the token screen may read "Write" where these say
+"Edit"):
+
+| Permission | For |
+|---|---|
+| Zone, Zone, Read | finding the zone |
+| Zone, DNS, Edit | the records |
+| Zone, Zone Settings, Edit | encryption and the script-injecting features |
+| Zone, Single Redirect, Edit | the redirect rule (also listed as "Dynamic URL Redirects") |
+
+Limit **Zone Resources** to the zones it is for, or to all zones in the account if it is kept
+for every new domain. Keep it in a password manager, not in a file in this repository.
+
+The script needs `curl` and `jq`, and runs with macOS's own bash.
+
 ## Generator page
 
 `site/index.html` is a single page: type the domain, then **Download** gives a file in the same shape as Cloudflare's own DNS export, with the five
