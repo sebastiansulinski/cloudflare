@@ -8,8 +8,10 @@ created with it needs no hand edits.
 **Create it once per server:** the server's dashboard, **Nginx Templates**, **New template**.
 Forge fills in its default template; name the copy `Cloudflare Tunnel` and edit it:
 
-1. Delete the `X-Frame-Options` and `X-XSS-Protection` lines.
-2. Add the three `real_ip` lines below `add_header X-Content-Type-Options "nosniff";`.
+1. Delete the `X-Frame-Options` and `X-XSS-Protection` lines, and the
+   `X-Content-Type-Options` line for sites whose application sends `nosniff` itself (the
+   Laravel sites here do).
+2. Add the three `real_ip` lines in the server block, where those header lines were.
 3. Add `fastcgi_param HTTPS on;` inside the `location ~ \.php$` block, after its `include`
    line(s).
 4. For Laravel sites that generate `robots.txt`: replace the `robots.txt` line as in

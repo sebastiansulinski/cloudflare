@@ -33,11 +33,14 @@ PHP block):
    add_header X-XSS-Protection "1; mode=block";
    ```
 
-   Keep `add_header X-Content-Type-Options "nosniff";`. Keep any `Strict-Transport-Security`
-   line unless the application sends the header itself. A `location` block with its own
+   Remove `add_header X-Content-Type-Options "nosniff";` too when the application sends it
+   itself, as the Laravel sites here do: otherwise the header is sent twice. Keep it for a site
+   whose application does not. Keep any `Strict-Transport-Security` line unless the application
+   sends the header itself. A `location` block with its own
    `add_header` drops all of the server block's headers inside that location.
 
-3. **Trust the visitor address only from cloudflared**, directly below the `nosniff` line:
+3. **Trust the visitor address only from cloudflared**, in the server block (below its
+   `add_header` lines, or where they were):
 
    ```nginx
    # Only cloudflared reaches nginx (ports 80 and 443 are closed), so its headers are trusted.
