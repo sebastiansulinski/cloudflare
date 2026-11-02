@@ -8,7 +8,8 @@ Domain Name System and TLS is Transport Layer Security.
 
 ## DNS records
 
-Delete every imported record, then add exactly these:
+Delete every imported record, then add exactly these. The generator in `site/index.html`
+([Generator page](#generator-page)) writes them as a file to import.
 
 | Type | Name | Content | Proxy | Why |
 |---|---|---|---|---|
@@ -80,6 +81,25 @@ for u in "http://$FROM/" "https://$FROM/about?x=1" "http://www.$FROM/" "https://
   printf "%-45s " "$u"; curl -s -o /dev/null -m 20 -w "%{http_code} %{redirect_url}\n" "$u"
 done
 ```
+
+## Generator page
+
+`site/index.html` is a single page: type the domain, then **Download** gives a file in the same shape as Cloudflare's own DNS export, with the five
+records above. In the zone: **DNS, Records**, delete the imported records, then **Import and
+Export**, **Import DNS records**, and choose the file. Leave **Proxy imported DNS records**
+unticked: each `A` record carries `cf_tags=cf-proxied:true`, which sets its orange cloud. The
+file has no `SOA` or `NS` records; Cloudflare manages those for every zone. A link such as
+`?domain=old-domain.com` opens it filled in.
+
+It is served by Cloudflare Pages from this repository, behind Cloudflare Access:
+
+1. **Workers & Pages, Create, Pages, Connect to Git**: this repository, production branch
+   `main`, framework preset **None**, no build command, build output directory `site`.
+   Every push to `main` redeploys it.
+2. **Zero Trust, Access, Applications, Add an application, Self-hosted**: the project's
+   `<project>.pages.dev` hostname, plus `*.<project>.pages.dev` for preview deployments, with
+   a policy that allows only your own email address. Without it, anyone with the address can
+   open the page.
 
 ---
 

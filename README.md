@@ -52,6 +52,7 @@ nothing has to listen on ports 80 or 443 to the internet, and the server needs n
 9. [Domains that only redirect](docs/redirect-only-domains.md)
    - [DNS records](docs/redirect-only-domains.md#dns-records)
    - [The redirect rule](docs/redirect-only-domains.md#the-redirect-rule)
+   - [Generator page](docs/redirect-only-domains.md#generator-page)
 10. [Serve an MTA-STS policy from a Worker](docs/mta-sts-policy.md)
     - [The records](docs/mta-sts-policy.md#the-records)
     - [The Worker](docs/mta-sts-policy.md#the-worker)

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Redirect domain records</title>
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --surface: #ffffff;
+      --ink: #1c1d1f;
+      --muted: #5c5f66;
+      --line: #dcdcd7;
+      --accent: #c2410c;
+      --code-bg: #f1f1ee;
+      --error: #b42318;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141517;
+        --surface: #1c1d20;
+        --ink: #ececea;
+        --muted: #a2a5ab;
+        --line: #33353a;
+        --accent: #fb923c;
+        --code-bg: #232428;
+        --error: #f97066;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+    h1 { font-size: 1.6rem; margin: 0 0 4px; }
+    h2 { font-size: 1.1rem; margin: 36px 0 8px; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    label { display: block; font-weight: 600; margin: 20px 0 6px; }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      font: inherit;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1.5px solid var(--line);
+      border-radius: 8px;
+    }
+    input:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .hint { font-size: 0.9rem; margin-top: 6px; }
+    .error { color: var(--error); font-size: 0.9rem; margin-top: 6px; min-height: 1.4em; }
+    pre {
+      margin: 0;
+      padding: 14px 16px;
+      overflow-x: auto;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: 13.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    button {
+      min-height: 44px;
+      padding: 0 16px;
+      font: inherit;
+      font-weight: 600;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1.5px solid var(--line);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    ol { padding-left: 20px; color: var(--muted); }
+    li { margin-bottom: 6px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+    .status { font-size: 0.9rem; color: var(--muted); min-height: 1.4em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Redirect domain records</h1>
+  <p>
+    The DNS records for a domain that only redirects to another one, as in the runbook's
+    "Domains that only redirect". Type the domain, download the file, and import it in Cloudflare.
+  </p>
+
+  <label for="domain">Domain that redirects</label>
+  <input id="domain" type="text" inputmode="url" autocomplete="off" spellcheck="false"
+         placeholder="old-domain.com" aria-describedby="domain-error">
+  <div class="error" id="domain-error" role="alert"></div>
+
+  <h2>DNS records to import</h2>
+  <pre id="zone" tabindex="0" aria-label="Zone file"></pre>
+  <div class="actions">
+    <button class="primary" id="download" type="button">Download file</button>
+    <button id="copy-zone" type="button">Copy</button>
+  </div>
+  <div class="status" id="zone-status" role="status"></div>
+
+  <ol>
+    <li>In the zone: <strong>DNS, Records</strong>. Delete every record Cloudflare imported when the zone was added.</li>
+    <li><strong>Import and Export</strong>, <strong>Import DNS records</strong>, choose the downloaded file. Leave
+      <strong>Proxy imported DNS records</strong> unticked: the file marks the two <code>A</code> records proxied
+      itself.</li>
+    <li>Check the list: both <code>A</code> records with an orange cloud, the <code>MX</code> and the two
+      <code>TXT</code> records grey (DNS only).</li>
+  </ol>
+</main>
+
+<script>
+  const PLACEHOLDER = 'old-domain.com';
+  const HOSTNAME = /^(?=.{1,253}$)(?!-)([a-z0-9-]{1,63}(?<!-)\.)+[a-z]{2,63}$/;
+
+  const $ = (id) => document.getElementById(id);
+  const field = $('domain');
+
+  // Whatever was typed or pasted, reduced to a bare lower-case hostname.
+  function clean(value) {
+    return value.trim().toLowerCase()
+      .replace(/^[a-z]+:\/\//, '')
+      .replace(/[/?#].*$/, '')
+      .replace(/:\d+$/, '')
+      .replace(/\.$/, '');
+  }
+
+  function read() {
+    const value = clean(field.value).replace(/^www\./, '');
+    const error = value !== '' && !HOSTNAME.test(value) ? 'That does not look like a domain name.' : '';
+    $('domain-error').textContent = error;
+    field.setAttribute('aria-invalid', error ? 'true' : 'false');
+    return { value: value || PLACEHOLDER, ready: value !== '' && !error };
+  }
+
+  // A BIND zone file in the shape of Cloudflare's own export (DNS, Records, Import and
+  // Export): TTL 1 is "Auto", and the cf_tags comment sets each record's proxy status.
+  // No SOA or NS records: Cloudflare manages those for every zone itself.
+  function zoneFile(domain) {
+    const d = `${domain}.`;
+    return [
+      ';;',
+      `;; Domain:     ${d}`,
+      ';; Records for a domain that only redirects, for Cloudflare\'s DNS import.',
+      ';;',
+      '',
+      ';; A Records',
+      `${d}\t1\tIN\tA\t192.0.2.1 ; cf_tags=cf-proxied:true`,
+      `www.${d}\t1\tIN\tA\t192.0.2.1 ; cf_tags=cf-proxied:true`,
+      '',
+      ';; MX Records',
+      `${d}\t1\tIN\tMX\t0 .`,
+      '',
+      ';; TXT Records',
+      `${d}\t1\tIN\tTXT\t"v=spf1 -all"`,
+      `_dmarc.${d}\t1\tIN\tTXT\t"v=DMARC1; p=reject;"`,
+      '',
+    ].join('\n');
+  }
+
+  let current = { value: PLACEHOLDER, ready: false };
+
+  function render() {
+    const domain = read();
+    current = domain;
+
+    $('zone').textContent = zoneFile(domain.value);
+    $('download').disabled = !domain.ready;
+    $('download').textContent = domain.ready ? `Download ${domain.value}.txt` : 'Download file';
+
+
+    const url = new URL(location);
+    domain.ready ? url.searchParams.set('domain', domain.value) : url.searchParams.delete('domain');
+    history.replaceState(null, '', url);
+  }
+
+  async function copy(id, statusId) {
+    try {
+      await navigator.clipboard.writeText($(id).textContent);
+      $(statusId).textContent = 'Copied.';
+    } catch {
+      $(statusId).textContent = 'Copy failed: select the text and copy it instead.';
+    }
+  }
+
+  $('download').addEventListener('click', () => {
+    if (!current.ready) return;
+    const blob = new Blob([zoneFile(current.value)], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${current.value}.txt`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+    $('zone-status').textContent = `Downloaded ${current.value}.txt.`;
+  });
+  $('copy-zone').addEventListener('click', () => copy('zone', 'zone-status'));
+
+  field.addEventListener('input', render);
+
+  // A link with ?domain=... opens filled in.
+  field.value = new URLSearchParams(location.search).get('domain') || '';
+  render();
+</script>
+</body>
+</html>
