@@ -91,9 +91,8 @@ both schemes, a path and a query string). Run it again any time: what is already
 alone.
 
 ```bash
-export CLOUDFLARE_API_TOKEN=...   # see below
-bin/setup-redirect-domain --dry-run old-domain.com example.co.uk
-bin/setup-redirect-domain old-domain.com example.co.uk
+~/code/cloudflare/bin/setup-redirect-domain --dry-run old-domain.com example.co.uk
+~/code/cloudflare/bin/setup-redirect-domain old-domain.com example.co.uk
 ```
 
 - `--dry-run` reads the zone and prints every change it would make, changing nothing.
@@ -114,7 +113,12 @@ these zone permissions (the labels in the token screen may read "Write" where th
 | Zone, Single Redirect, Edit | the redirect rule (also listed as "Dynamic URL Redirects") |
 
 Limit **Zone Resources** to the zones it is for, or to all zones in the account if it is kept
-for every new domain. Keep it in a password manager, not in a file in this repository.
+for every new domain.
+
+Put it in `.env` at this repository's root, once: copy `.env.example` to `.env` and paste the
+token after `CLOUDFLARE_API_TOKEN=`. `.env` is gitignored, so it never reaches GitHub, and the
+script reads only that one line from it. A token exported in the terminal takes precedence.
+Keep a copy in the password manager too: Cloudflare shows a token only once.
 
 The script needs `curl` and `jq`, and runs with macOS's own bash.
 

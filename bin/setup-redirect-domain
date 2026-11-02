@@ -19,7 +19,9 @@
 #
 # Needs CLOUDFLARE_API_TOKEN: a token with Zone Read, DNS Edit, Zone Settings
 # Edit and Single Redirect Edit on the zone (docs/redirect-only-domains.md).
-# CLOUDFLARE_API_BASE overrides the API address, for testing.
+# It is read from the environment, or else from .env at the repository's root
+# (gitignored; copy .env.example). CLOUDFLARE_API_BASE overrides the API
+# address, for testing.
 
 set -euo pipefail
 
@@ -34,7 +36,7 @@ for argument in "$@"; do
         --dry-run) DRY_RUN=1 ;;
         --replace) REPLACE=1 ;;
         --no-check) CHECK=0 ;;
-        -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "Unknown option: $argument" >&2; exit 2 ;;
         *) ARGUMENTS+=("$argument") ;;
     esac
@@ -68,8 +70,17 @@ if [ "$DOMAIN" = "$TARGET" ] || [ "www.$DOMAIN" = "$TARGET" ]; then
     exit 2
 fi
 
+# The token from .env, unless the environment already has one. Only that line
+# is read; the file is never run as a script.
+ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env"
+if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ -f "$ENV_FILE" ]; then
+    CLOUDFLARE_API_TOKEN="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?CLOUDFLARE_API_TOKEN[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" \
+        | tail -1 | sed -E "s/[[:space:]]+$//; s/^['\"]//; s/['\"]$//")"
+fi
+
 if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-    echo "Set CLOUDFLARE_API_TOKEN first (docs/redirect-only-domains.md)." >&2
+    echo "No token: put CLOUDFLARE_API_TOKEN in $ENV_FILE (see .env.example)," >&2
+    echo "or export it in this terminal (docs/redirect-only-domains.md)." >&2
     exit 2
 fi
 
